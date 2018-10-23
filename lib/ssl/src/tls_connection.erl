@@ -43,7 +43,7 @@
 %% Internal application API
 
 %% Setup
--export([start_fsm/8, start_link/7, init/1]).
+-export([start_fsm/8, start_link/7, init/1, version/0]).
 
 %% State transition handling	 
 -export([next_record/1, next_event/3, next_event/4, handle_common_event/4]).
@@ -100,6 +100,8 @@ start_fsm(Role, Host, Port, Socket, {#ssl_options{erl_dist = true},_, Tracker} =
 	error:{badmatch, {error, _} = Error} ->
 	    Error
     end.
+
+version() -> 2.
 
 %%--------------------------------------------------------------------
 -spec start_link(atom(), host(), inet:port_number(), port(), list(), pid(), tuple()) ->
@@ -674,6 +676,7 @@ handle_info({Protocol, _, Data}, StateName,
     end;
 handle_info({CloseTag, Socket}, StateName,
             #state{socket = Socket, close_tag = CloseTag,
+		   user_data_buffer = UserDataBuffer,
                    socket_options = #socket_options{active = Active},
                    protocol_buffers = #protocol_buffers{tls_cipher_texts = CTs},
 		   negotiated_version = Version} = State) ->
@@ -683,7 +686,7 @@ handle_info({CloseTag, Socket}, StateName,
     %% session not be resumed.  This is a change from TLS 1.0 to conform
     %% with widespread implementation practice.
 
-    case (Active == false) andalso (CTs =/= []) of
+    case (Active == false) andalso (CTs =/= []) orelse more_user_data_buffer(UserDataBuffer) of
         false ->
             case Version of
                 {1, N} when N >= 1 ->
@@ -706,6 +709,13 @@ handle_info({CloseTag, Socket}, StateName,
     end;
 handle_info(Msg, StateName, State) ->
     ssl_connection:StateName(info, Msg, State, ?MODULE).
+
+more_user_data_buffer(<<>>) ->
+    false;
+more_user_data_buffer(undefined) ->
+    false;
+more_user_data_buffer(_) ->
+    true.
 
 handle_alerts([], Result) ->
     Result;
